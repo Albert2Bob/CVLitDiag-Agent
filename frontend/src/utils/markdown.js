@@ -1,7 +1,7 @@
 import MarkdownIt from "markdown-it";
-// Raw HTML is disabled; markdown-it also rejects javascript:/vbscript:/unsafe data URLs.
+// 已禁用原始 HTML；markdown-it 也会拒绝 javascript:/vbscript:/不安全的 data URL。
 const md = new MarkdownIt({ html: false, linkify: true, breaks: true });
-// Uploaded / generated remote images should not initiate unsolicited tracking requests.
+// 上传或生成的远程图片不应发起未经请求的跟踪请求。
 md.disable("image");
 md.renderer.rules.table_open = () => '<div class="table-scroll"><table>';
 md.renderer.rules.table_close = () => "</table></div>";

@@ -2,9 +2,11 @@
 import { computed, ref, watch } from "vue";
 import { useWorkspace } from "../stores/workspace";
 import { LABELS, TERMINAL } from "../constants/contracts";
+import { briefSummary, formatDuration } from "../utils/executionDisplay";
+import { eventStatus } from "../utils/eventStatus";
 import { isMock } from "../services";
 const store = useWorkspace(),
-  tab = ref("evidence");
+  tab = ref(isMock ? "evidence" : "timeline");
 watch(
   () => [store.evidenceId, store.selectedRunId],
   () => {
@@ -23,29 +25,6 @@ const timeline = computed(
       (e) => !["answer_delta", "heartbeat"].includes(e.type),
     ) || [],
 );
-function stepStatus(e, index) {
-  if (["failed", "validation_failed"].includes(e.type)) return "failed";
-  if (e.type === "cancelled") return "cancelled";
-  const endType = {
-    retrieval_started: "retrieval_finished",
-    tool_started: "tool_finished",
-    skill_selected: "skill_loaded",
-  }[e.type];
-  if (
-    endType &&
-    !timeline.value.slice(index + 1).some((item) => item.type === endType)
-  ) {
-    return ["failed", "cancelled"].includes(store.currentRun.status)
-      ? store.currentRun.status
-      : "running";
-  }
-  if (
-    index === timeline.value.length - 1 &&
-    !TERMINAL.includes(store.currentRun.status)
-  )
-    return "running";
-  return "completed";
-}
 </script>
 <template>
   <aside class="inspector">
@@ -63,7 +42,7 @@ function stepStatus(e, index) {
           store.evidenceId = '';
         "
       >
-        运行详情
+        执行过程
       </button>
     </div>
     <div class="inspector-body">
@@ -107,69 +86,99 @@ function stepStatus(e, index) {
           </p>
         </template>
       </template>
-      <h3 class="timeline-heading">Agent 运行时间线</h3>
-      <p v-if="!store.currentRun" class="muted">发送一个问题，观察研究过程。</p>
-      <template v-else>
-        <div class="run-summary">
-          <span :class="['status', store.currentRun.status]">
-            {{ LABELS[store.currentRun.status] }}
-          </span>
-          <small>{{ store.currentRun.question }}</small>
-        </div>
-        <ol class="timeline">
-          <li
-            v-for="(e, i) in timeline"
-            :key="e.event_id"
-            :class="stepStatus(e, i)"
-          >
-            <span class="timeline-dot"></span>
-            <div>
-              <strong>{{ LABELS[e.type] || e.type }}</strong>
-              <small>
-                {{ e.payload.name || e.payload.message || "处理当前科研问题" }}
-              </small>
-              <small v-if="Number.isFinite(e.payload.duration_ms)">
-                {{ (e.payload.duration_ms / 1000).toFixed(1) }} 秒
-              </small>
-            </div>
-          </li>
-        </ol>
-        <template v-if="tab === 'timeline'">
-          <p class="caption">
-            连接：{{
-              {
-                connected: "已连接",
-                connecting: "连接中",
-                reconnecting: "连接中断，正在重连",
-                disconnected: "已断开",
-                closed: "已结束",
-              }[store.connections[store.currentRun.run_id]] || "待连接"
-            }}
-          </p>
-          <p v-if="store.warnings[store.currentRun.run_id]" class="error">
-            {{ store.warnings[store.currentRun.run_id] }}
-          </p>
-          <div class="row-actions">
-            <button
-              v-if="
-                isMock &&
-                  !TERMINAL.includes(store.currentRun.status) &&
-                  store.connections[store.currentRun.run_id] === 'connected'
-              "
-              @click="store.disconnect(store.currentRun.run_id)"
-            >
-              模拟断线
-            </button>
-            <button
-              v-if="
-                !TERMINAL.includes(store.currentRun.status) ||
-                  store.warnings[store.currentRun.run_id]
-              "
-              @click="store.recover(store.currentRun.run_id)"
-            >
-              恢复连接
-            </button>
+      <template v-if="tab === 'timeline'">
+        <h3 class="timeline-heading">执行过程</h3>
+        <p class="caption">
+          {{
+            isMock ? "演示执行事件摘要" : "真实执行事件摘要，不是模型隐藏思维链"
+          }}
+        </p>
+        <p v-if="!store.currentRun" class="muted">
+          发送一个问题，观察研究过程。
+        </p>
+        <template v-else>
+          <div class="run-summary">
+            <span :class="['status', store.currentRun.status]">
+              {{ LABELS[store.currentRun.status] }}
+            </span>
+            <small>{{ store.currentRun.question }}</small>
           </div>
+          <ol class="timeline">
+            <li
+              v-for="(e, i) in timeline"
+              :key="e.event_id"
+              :class="eventStatus(e, i, timeline, store.currentRun.status)"
+            >
+              <span class="timeline-dot"></span>
+              <div>
+                <strong>{{ LABELS[e.type] || e.type }}</strong>
+                <small>{{ e.payload.name || "处理当前科研问题" }}</small>
+                <small v-if="e.payload.cache_hit">命中本次运行缓存</small>
+                <small v-if="e.payload.code">{{ e.payload.code }}</small>
+                <small v-if="e.payload.summary || e.payload.message">
+                  {{ briefSummary(e.payload.summary || e.payload.message) }}
+                </small>
+                <details v-if="e.type.startsWith('tool_')">
+                  <summary>参数与结果</summary>
+                  <small v-if="e.payload.tool_call_id">
+                    调用 ID：{{ e.payload.tool_call_id }}
+                  </small>
+                  <pre v-if="e.payload.arguments != null">{{
+                    JSON.stringify(e.payload.arguments, null, 2)
+                  }}</pre>
+                  <p v-if="e.payload.summary">{{ e.payload.summary }}</p>
+                  <p v-if="e.payload.message">{{ e.payload.message }}</p>
+                </details>
+                <small v-if="e.payload.iteration != null">
+                  轮次 {{ e.payload.iteration }}
+                </small>
+                <small v-if="e.payload.status">
+                  {{ LABELS[e.payload.status] || e.payload.status }}
+                </small>
+                <small v-if="Number.isFinite(e.payload.duration_ms)">
+                  {{ formatDuration(e.payload.duration_ms) }}
+                </small>
+              </div>
+            </li>
+          </ol>
+          <template v-if="tab === 'timeline'">
+            <p class="caption">
+              连接：{{
+                {
+                  connected: "已连接",
+                  connecting: "连接中",
+                  reconnecting: "连接中断，正在重连",
+                  disconnected: "已断开",
+                  closed: "已结束",
+                }[store.connections[store.currentRun.run_id]] || "待连接"
+              }}
+            </p>
+            <p v-if="store.warnings[store.currentRun.run_id]" class="error">
+              {{ store.warnings[store.currentRun.run_id] }}
+            </p>
+            <div class="row-actions">
+              <button
+                v-if="
+                  !TERMINAL.includes(store.currentRun.status) &&
+                  ['connected', 'connecting', 'reconnecting'].includes(
+                    store.connections[store.currentRun.run_id],
+                  )
+                "
+                @click="store.disconnect(store.currentRun.run_id)"
+              >
+                {{ isMock ? "模拟断线" : "断开连接" }}
+              </button>
+              <button
+                v-if="
+                  !TERMINAL.includes(store.currentRun.status) ||
+                  store.warnings[store.currentRun.run_id]
+                "
+                @click="store.recover(store.currentRun.run_id)"
+              >
+                恢复连接
+              </button>
+            </div>
+          </template>
         </template>
       </template>
     </div>

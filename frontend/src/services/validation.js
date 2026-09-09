@@ -3,15 +3,17 @@ const strings = (v) =>
   Array.isArray(v) && v.every((x) => typeof x === "string");
 const text = (v) => typeof v === "string" && v.length > 0;
 export function checkAnswer(a) {
+  if (typeof a === "string") return true;
   return (
     !!a &&
     ANSWER_STATUSES.includes(a.status) &&
     typeof a.summary === "string" &&
     Array.isArray(a.claims) &&
-    a.claims.every((c) => text(c.statement) && strings(c.evidence_ids)) &&
+    a.claims.every((c) => c && text(c.statement) && strings(c.evidence_ids)) &&
     Array.isArray(a.hypotheses) &&
     a.hypotheses.every(
       (h) =>
+        h &&
         text(h.hypothesis) &&
         Number.isFinite(h.confidence) &&
         h.confidence >= 0 &&
@@ -21,6 +23,7 @@ export function checkAnswer(a) {
     Array.isArray(a.experiments) &&
     a.experiments.every(
       (e) =>
+        e &&
         text(e.objective) &&
         text(e.change) &&
         strings(e.metrics) &&

@@ -1,6 +1,6 @@
 import { TERMINAL } from "../constants/contracts";
 import { checkAnswer, checkEvent, validEvidence } from "../services/validation";
-/** Idempotent event reducer. Terminal states cannot be reopened by delayed events. */
+/** 幂等事件归并器。延迟事件无法重新打开终止状态。 */
 export function applyEvent(run, event) {
   if (!checkEvent(event) || event.run_id !== run.run_id) return false;
   run.events ||= [];
@@ -13,15 +13,23 @@ export function applyEvent(run, event) {
   run.sequence = event.sequence;
   run.last_event_id = event.event_id;
   run.events.push(event);
+  if (event.type === "output_repair_started") {
+    run.outputPhase = "repairing";
+    run.draft = "";
+  }
+  if (event.type === "output_repair_finished") run.outputPhase = "validated";
   if (event.type === "run_started") run.status = "running";
   if (event.type === "answer_delta")
     run.draft = (run.draft || "") + event.payload.delta;
   if (TERMINAL.includes(event.type)) {
+    run.outputPhase = "";
+    run.draft = "";
     run.status = event.type;
     if (event.type === "completed") {
       const evidence = validEvidence(event.payload.evidence, run);
       const ids = new Set(evidence.map((e) => e.evidence_id));
       if (
+        typeof event.payload.answer !== "string" &&
         event.payload.answer.claims.some((c) =>
           c.evidence_ids.some((id) => !ids.has(id)),
         )
@@ -42,7 +50,7 @@ export function applyEvent(run, event) {
   }
   return true;
 }
-/** Restore authoritative snapshot; replay never creates another task. */
+/** 恢复权威快照；重放绝不会创建另一个任务。 */
 export function restoreRun(snapshot) {
   const run = {
     ...snapshot,
@@ -58,7 +66,10 @@ export function restoreRun(snapshot) {
     .filter(checkEvent)
     .sort((a, b) => a.sequence - b.sequence))
     applyEvent(run, e);
+  if (!TERMINAL.includes(run.status)) run.status = snapshot.status;
   if (TERMINAL.includes(snapshot.status)) {
+    run.outputPhase = "";
+    run.draft = "";
     run.status = snapshot.status;
     run.answer = snapshot.answer;
     run.evidence = validEvidence(snapshot.evidence, snapshot);
@@ -67,7 +78,10 @@ export function restoreRun(snapshot) {
       const ids = new Set(run.evidence.map((e) => e.evidence_id));
       if (
         !checkAnswer(run.answer) ||
-        run.answer.claims.some((c) => c.evidence_ids.some((id) => !ids.has(id)))
+        (typeof run.answer !== "string" &&
+          run.answer.claims.some((c) =>
+            c.evidence_ids.some((id) => !ids.has(id)),
+          ))
       ) {
         run.status = "failed";
         run.answer = null;

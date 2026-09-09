@@ -1,7 +1,8 @@
+import { mockService } from "../mocks/service";
 import { request } from "./apiClient";
 import { subscribeSSE } from "./sseClient";
 const enc = encodeURIComponent;
-// List routes below are suggestions, not implemented backend capabilities. See README.
+// 第三阶段后端路由；文档控制功能仍为本地演示。
 export const httpService = {
   scenarios: async () => [],
   listProjects: () => request("/api/projects"),
@@ -11,19 +12,11 @@ export const httpService = {
   createThread: (body) => request("/api/threads", { method: "POST", body }),
   getMessages: (thread_id) =>
     request(`/api/threads/${enc(thread_id)}/messages`),
-  listDocuments: (project_id) =>
-    request(`/api/projects/${enc(project_id)}/documents`),
-  getDocument: (document_id) => request(`/api/documents/${enc(document_id)}`),
-  deleteDocument: (document_id) =>
-    request(`/api/documents/${enc(document_id)}`, { method: "DELETE" }),
-  uploadDocument: (project_id, file) => {
-    const body = new FormData();
-    body.append("file", file);
-    return request(`/api/projects/${enc(project_id)}/documents`, {
-      method: "POST",
-      body,
-    });
-  },
+  listDocuments: mockService.listDocuments,
+  getDocument: mockService.getDocument,
+  deleteDocument: mockService.deleteDocument,
+  uploadDocument: (project_id, file, fail = false) =>
+    mockService.uploadDocument(project_id, file, fail, true),
   createRun: ({ project_id, thread_id, user_id, question }) =>
     request("/api/runs", {
       method: "POST",

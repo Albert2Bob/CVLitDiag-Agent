@@ -39,7 +39,7 @@ async function create() {
         {{
           isMock
             ? "演示模式 · 资料、回答和解析过程均为模拟数据。"
-            : "接口联调模式 · 登录仍为原型占位，需后端提供认证与授权。"
+            : "阶段 3 · 开发模式 · 登录仅为开发占位；真实模型问答，资料解析与引用为演示。"
         }}
       </p>
       <p v-if="store.error" class="error" role="alert">
@@ -55,7 +55,7 @@ async function create() {
         >
           <span class="project-initial">{{ p.name.slice(0, 1) }}</span>
           <div>
-            <h2>{{ p.name }}</h2>
+            <h2>{{ p.name }}{{ isMock ? " · 演示项目" : "" }}</h2>
             <p>{{ p.description || "独立科研项目" }}</p>
           </div>
           <span class="go">进入项目 →</span>

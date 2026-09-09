@@ -1,6 +1,6 @@
 import { defineStore } from "pinia";
 import { computed, ref } from "vue";
-import { service } from "../services";
+import { service, isMock } from "../services";
 import { TERMINAL } from "../constants/contracts";
 import { applyEvent, restoreRun } from "../utils/runState";
 import { readLocal, writeLocal } from "../utils/storage";
@@ -23,6 +23,28 @@ export const useWorkspace = defineStore("workspace", () => {
     evidenceId = ref("");
   const closers = new Map();
   let revision = 0;
+  const runVersions = new Map();
+  const selectionKey = `vision-research.selection.${isMock ? "mock" : "http"}`;
+  const savedThreads = readLocal(selectionKey, {});
+  const displayMessages = computed(() =>
+    messages.value.flatMap((m) =>
+      m.role === "user" &&
+      runs.value[m.run_id] &&
+      !messages.value.some(
+        (a) => a.role === "assistant" && a.run_id === m.run_id,
+      )
+        ? [
+            m,
+            {
+              ...m,
+              message_id: `answer:${m.run_id}`,
+              role: "assistant",
+              content: "",
+            },
+          ]
+        : [m],
+    ),
+  );
   const project = computed(() =>
     projects.value.find((p) => p.project_id === projectId.value),
   );
@@ -45,6 +67,7 @@ export const useWorkspace = defineStore("workspace", () => {
     writeLocal("vision-research.user", user.value);
   }
   function dispose() {
+    ++revision;
     for (const close of closers.values()) close();
     closers.clear();
   }
@@ -106,7 +129,20 @@ export const useWorkspace = defineStore("workspace", () => {
   }
   async function recover(run_id) {
     return attempt(async () => {
+      const version = (runVersions.get(run_id) || 0) + 1;
+      runVersions.set(run_id, version);
+      const navigation = revision;
+      const previous = runs.value[run_id];
+      const previousSequence = previous?.sequence;
       const snapshot = await service.getRun(run_id);
+      if (
+        previous &&
+        (runs.value[run_id] !== previous ||
+          previous.sequence !== previousSequence)
+      )
+        return runs.value[run_id];
+      if (navigation !== revision || runVersions.get(run_id) !== version)
+        return null;
       const run = restoreRun(snapshot);
       runs.value[run_id] = run;
       warnings.value[run_id] = "";
@@ -116,7 +152,15 @@ export const useWorkspace = defineStore("workspace", () => {
   }
   async function selectThread(id) {
     const version = ++revision;
+    const pid = projectId.value;
     threadId.value = id;
+    savedThreads[pid] = id;
+    try {
+      writeLocal(selectionKey, savedThreads);
+    } catch {
+      /* 即使存储不可用，导航仍可正常工作。 */
+    }
+    error.value = "";
     messages.value = [];
     selectedRunId.value = "";
     evidenceId.value = "";
@@ -127,24 +171,32 @@ export const useWorkspace = defineStore("workspace", () => {
       messages.value = result.filter(
         (m) => m.project_id === projectId.value && m.thread_id === id,
       );
-      const ids = [...new Set(messages.value.map((m) => m.run_id))];
+      const ids = [
+        ...new Set(messages.value.map((m) => m.run_id).filter(Boolean)),
+      ];
       const snapshots = await Promise.all(
         ids.map(async (run_id) => {
           try {
-            return await service.getRun(run_id);
+            const runVersion = runVersions.get(run_id);
+            const existing = runs.value[run_id];
+            const sequence = existing?.sequence;
+            const snapshot = await service.getRun(run_id);
+            if (
+              runVersions.get(run_id) !== runVersion ||
+              runs.value[run_id] !== existing ||
+              existing?.sequence !== sequence
+            )
+              return null;
+            return snapshot;
           } catch (e) {
             warnings.value[run_id] = e.message;
             return null;
           }
         }),
       );
+      if (version !== revision) return;
       for (const snapshot of snapshots.filter(Boolean)) {
-        if (
-          snapshot.thread_id !== id ||
-          snapshot.project_id !==
-            messages.value.find((m) => m.thread_id === id)?.project_id
-        )
-          continue;
+        if (snapshot.thread_id !== id || snapshot.project_id !== pid) continue;
         runs.value[snapshot.run_id] = restoreRun(snapshot);
         connect(runs.value[snapshot.run_id]);
       }
@@ -155,7 +207,7 @@ export const useWorkspace = defineStore("workspace", () => {
       if (version === revision) loading.value = false;
     }
   }
-  async function selectProject(id) {
+  async function selectProject(id, preferredThread = "") {
     const version = ++revision;
     projectId.value = id;
     threadId.value = "";
@@ -174,7 +226,13 @@ export const useWorkspace = defineStore("workspace", () => {
       if (version !== revision) return;
       threads.value = ts.filter((t) => t.project_id === id);
       documents.value = ds.filter((d) => d.project_id === id);
-      if (threads.value.length) await selectThread(threads.value[0].thread_id);
+      if (threads.value.length) {
+        const preferred = preferredThread || savedThreads[id];
+        await selectThread(
+          threads.value.find((t) => t.thread_id === preferred)?.thread_id ||
+            threads.value[0].thread_id,
+        );
+      }
     } catch (e) {
       if (version === revision) error.value = e.message;
     } finally {
@@ -183,12 +241,13 @@ export const useWorkspace = defineStore("workspace", () => {
   }
   async function newThread() {
     const pid = projectId.value;
+    const version = revision;
     return attempt(async () => {
       const t = await service.createThread({
         project_id: pid,
         user_id: user.value.user_id,
       });
-      if (pid === projectId.value) {
+      if (pid === projectId.value && version === revision) {
         threads.value.push(t);
         await selectThread(t.thread_id);
       }
@@ -196,15 +255,25 @@ export const useWorkspace = defineStore("workspace", () => {
     });
   }
   async function send(question, scenario) {
-    if (!question.trim() || sending.value || activeRun.value) return null;
+    if (!question.trim() || loading.value || sending.value || activeRun.value)
+      return null;
     sending.value = true;
     const pid = projectId.value;
+    const startingRevision = revision;
+    let tid = threadId.value;
     try {
-      if (!threadId.value) {
+      if (!tid) {
         const t = await newThread();
-        if (!t) return null;
+        if (
+          !t ||
+          pid !== projectId.value ||
+          threadId.value !== t.thread_id ||
+          revision !== startingRevision + 1
+        )
+          return null;
+        tid = t.thread_id;
       }
-      const tid = threadId.value;
+      const version = revision;
       return await attempt(async () => {
         const snapshot = await service.createRun({
           project_id: pid,
@@ -215,18 +284,26 @@ export const useWorkspace = defineStore("workspace", () => {
         });
         runs.value[snapshot.run_id] = restoreRun(snapshot);
         connect(runs.value[snapshot.run_id]);
-        if (pid === projectId.value && tid === threadId.value) {
+        if (
+          version === revision &&
+          pid === projectId.value &&
+          tid === threadId.value
+        ) {
           selectedRunId.value = snapshot.run_id;
           evidenceId.value = "";
           const [ms, ts] = await Promise.all([
             service.getMessages(tid),
             service.listThreads(pid),
           ]);
-          if (pid === projectId.value && tid === threadId.value)
+          if (
+            version === revision &&
+            pid === projectId.value &&
+            tid === threadId.value
+          )
             messages.value = ms.filter(
               (m) => m.project_id === pid && m.thread_id === tid,
             );
-          if (pid === projectId.value)
+          if (version === revision && pid === projectId.value)
             threads.value = ts.filter((t) => t.project_id === pid);
         }
         return snapshot;
@@ -237,6 +314,7 @@ export const useWorkspace = defineStore("workspace", () => {
   }
   async function cancel(run_id) {
     return attempt(async () => {
+      runVersions.set(run_id, (runVersions.get(run_id) || 0) + 1);
       const snapshot = await service.cancelRun(run_id);
       closers.get(run_id)?.();
       closers.delete(run_id);
@@ -271,6 +349,7 @@ export const useWorkspace = defineStore("workspace", () => {
     threads,
     documents,
     messages,
+    displayMessages,
     runs,
     projectId,
     threadId,

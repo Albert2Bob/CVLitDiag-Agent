@@ -1,4 +1,5 @@
 <script setup>
+import { isMock } from "../services";
 import { useRouter } from "vue-router";
 import { useWorkspace } from "../stores/workspace";
 const store = useWorkspace(),
@@ -29,19 +30,29 @@ async function enter() {
         连接文献阅读、训练诊断与下一步实验。
       </p>
       <div class="login-box">
-        <h2>进入原型工作台</h2>
+        <h2>{{ isMock ? "进入原型工作台" : "进入开发工作台" }}</h2>
         <p>
-          这是模拟登录，不提供真实身份认证。
+          {{
+            isMock
+              ? "这是模拟登录，不提供真实身份认证。"
+              : "登录仅为开发占位，不提供真实身份认证。"
+          }}
           <br />
-          所有回答、资料解析与引用均为演示。
+          {{
+            isMock
+              ? "所有回答、资料解析与引用均为演示。"
+              : "真实模型问答；资料解析与引用为演示。"
+          }}
         </p>
         <button class="primary" @click="enter">
-          以演示研究员身份进入
+          {{ isMock ? "以演示研究员身份进入" : "以开发占位身份进入" }}
           <span>→</span>
         </button>
         <p v-if="store.error" role="alert" class="error">{{ store.error }}</p>
       </div>
-      <small>阶段 1 · 前端交互原型</small>
+      <small>
+        {{ isMock ? "阶段 1 · 前端交互原型" : "阶段 3 · 开发模式" }}
+      </small>
     </div>
     <div class="entry-art" aria-hidden="true">
       <div class="research-symbol">F(x) + x</div>
