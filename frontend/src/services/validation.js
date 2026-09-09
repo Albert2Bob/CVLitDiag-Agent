@@ -3,6 +3,7 @@ const strings = (v) =>
   Array.isArray(v) && v.every((x) => typeof x === "string");
 const text = (v) => typeof v === "string" && v.length > 0;
 export function checkAnswer(a) {
+  if (typeof a === "string") return true;
   return (
     !!a &&
     ANSWER_STATUSES.includes(a.status) &&

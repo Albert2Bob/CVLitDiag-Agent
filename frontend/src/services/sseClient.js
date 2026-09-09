@@ -1,7 +1,7 @@
 import { API_BASE } from "./apiClient";
 import { EVENTS, TERMINAL } from "../constants/contracts";
 import { checkEvent } from "./validation";
-/** EventSource owns same-instance Last-Event-ID retries. Fresh instances use a proposed cursor query. */
+/** EventSource 负责同一实例的 Last-Event-ID 重试。新实例使用建议的游标查询参数。 */
 export function subscribeSSE(
   run_id,
   { onEvent, onConnection, onError },
@@ -51,6 +51,7 @@ export function subscribeSSE(
   source.onmessage = receive;
   for (const type of EVENTS) source.addEventListener(type, receive);
   source.onopen = () => {
+    if (closed) return;
     onConnection("connected");
     arm();
   };

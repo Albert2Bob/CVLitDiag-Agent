@@ -1,5 +1,5 @@
 <script setup>
-import { nextTick, onMounted, onUnmounted, ref, watch } from "vue";
+import { nextTick, onUnmounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { useWorkspace } from "../stores/workspace";
 import { isMock } from "../services";
@@ -15,38 +15,58 @@ const input = ref(""),
   panel = ref(true),
   manager = ref(false),
   messageArea = ref(null);
-let initial = true;
-async function init() {
-  await store.loadProjects();
-  await store.selectProject(route.params.project_id);
-  const run_id = route.query.run_id;
-  if (typeof run_id === "string") {
-    const r = await store.recover(run_id);
-    if (r?.project_id === store.projectId) {
-      await store.selectThread(r.thread_id);
-      store.selectedRunId = run_id;
-    } else if (r) store.error = "该任务不属于当前项目，已阻止显示。";
-  }
-  initial = false;
-}
-onMounted(init);
-onUnmounted(() => store.dispose());
+let routeRevision = 0;
+let restoring = false;
+let hydrated = false;
 watch(
-  () => route.params.project_id,
-  async (id) => {
-    if (id) {
-      input.value = "";
-      manager.value = false;
-      await store.selectProject(id);
+  () => [route.params.project_id, route.query.thread_id, route.query.run_id],
+  async ([pid, tid, rid]) => {
+    if (!pid) return;
+    if (
+      hydrated &&
+      pid === store.projectId &&
+      tid === store.threadId &&
+      (!rid || rid === store.selectedRunId)
+    )
+      return;
+    const version = ++routeRevision;
+    restoring = true;
+    input.value = "";
+    manager.value = false;
+    await store.loadProjects();
+    if (version !== routeRevision) return;
+    await store.selectProject(pid, typeof tid === "string" ? tid : "");
+    if (version !== routeRevision) return;
+    if (typeof rid === "string") {
+      const run = await store.recover(rid);
+      if (version !== routeRevision) return;
+      if (run?.project_id === pid && (!tid || run.thread_id === tid)) {
+        if (store.threadId !== run.thread_id)
+          await store.selectThread(run.thread_id);
+        if (version !== routeRevision) return;
+        store.selectedRunId = rid;
+      }
     }
+    restoring = false;
+    hydrated = true;
+    syncRoute();
   },
+  { immediate: true },
 );
-watch(
-  () => store.selectedRunId,
-  (id) => {
-    if (!initial) router.replace({ query: id ? { run_id: id } : {} });
-  },
-);
+function syncRoute() {
+  if (!restoring && route.params.project_id === store.projectId)
+    router.replace({
+      query: {
+        ...(store.threadId ? { thread_id: store.threadId } : {}),
+        ...(store.selectedRunId ? { run_id: store.selectedRunId } : {}),
+      },
+    });
+}
+watch(() => [store.threadId, store.selectedRunId], syncRoute);
+onUnmounted(() => {
+  ++routeRevision;
+  store.dispose();
+});
 watch(
   () => [store.messages.length, store.currentRun?.draft],
   async () => {
@@ -139,7 +159,7 @@ async function switchProject(event) {
       </nav>
       <div class="sidebar-documents">
         <div class="nav-label">
-          资料库
+          资料库 · 本地演示
           <span>{{ store.documents.length }}</span>
         </div>
         <button
@@ -192,11 +212,13 @@ async function switchProject(event) {
               <small>{{ s.question }}</small>
             </button>
           </div>
-          <p class="caption">回答与引用均为演示数据，不代表真实分析结果。</p>
+          <p v-if="isMock" class="caption">
+            回答与引用均为演示数据，不代表真实分析结果。
+          </p>
         </div>
         <template v-else>
           <article
-            v-for="m in store.messages"
+            v-for="m in store.displayMessages"
             :key="m.message_id"
             :class="['message', m.role]"
           >
@@ -219,7 +241,7 @@ async function switchProject(event) {
                       panel = true;
                     "
                   >
-                    运行详情
+                    执行过程
                   </button>
                 </div>
                 <AnswerContent
@@ -240,7 +262,7 @@ async function switchProject(event) {
                   <button
                     v-if="
                       store.connections[m.run_id] === 'disconnected' ||
-                        store.warnings[m.run_id]
+                      store.warnings[m.run_id]
                     "
                     @click="store.recover(m.run_id)"
                   >
@@ -250,6 +272,7 @@ async function switchProject(event) {
               </div>
             </template>
             <template v-else>
+              <p v-if="m.content" class="user-bubble">{{ m.content }}</p>
               <p class="error">
                 任务加载失败。
                 <button @click="store.recover(m.run_id)">重试恢复</button>
@@ -300,7 +323,13 @@ async function switchProject(event) {
           </button>
         </div>
         <div class="composer-footer">
-          <span>演示回答与引用仅用于交互验证</span>
+          <span>
+            {{
+              isMock
+                ? "演示回答与引用仅用于交互验证"
+                : "回答由后端生成 · 资料库为本地演示"
+            }}
+          </span>
           <span>Enter 发送 · Shift + Enter 换行</span>
         </div>
       </form>

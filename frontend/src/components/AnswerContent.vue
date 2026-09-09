@@ -6,14 +6,29 @@ defineEmits(["citation"]);
 </script>
 <template>
   <div class="answer-content">
-    <!-- html:false and safe URL validation in the single Markdown renderer. -->
+    <h3>
+      {{
+        run.status === "completed"
+          ? "最终回答"
+          : ["queued", "running"].includes(run.status)
+            ? "回答生成中"
+            : "未完成回答"
+      }}
+    </h3>
+    <!-- 在唯一的 Markdown 渲染器中设置 html:false 并执行安全 URL 校验。 -->
     <!-- eslint-disable vue/no-v-html -->
     <div
       class="markdown"
-      v-html="renderMarkdown(run.answer?.summary || run.draft)"
+      v-html="
+        renderMarkdown(
+          typeof run.answer === 'string'
+            ? run.answer
+            : run.answer?.summary || run.draft,
+        )
+      "
     ></div>
     <!-- eslint-enable vue/no-v-html -->
-    <template v-if="run.answer">
+    <template v-if="run.answer && typeof run.answer !== 'string'">
       <div class="answer-status">{{ LABELS[run.answer.status] }}</div>
       <section v-if="run.answer.claims.length" class="claims">
         <h3>有据可循</h3>
@@ -59,7 +74,7 @@ defineEmits(["citation"]);
       "
       class="muted pulse"
     >
-      正在阅读问题、整理演示证据…
+      正在阅读问题、整理回答…
     </p>
     <p
       v-if="run.error"

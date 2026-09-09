@@ -15,7 +15,7 @@ function need(list, key, value) {
   if (!item) throw new Error("记录不存在或已删除。");
   return item;
 }
-/** Fixed timestamps and durable event IDs make reload/reconnect replay deterministic. */
+/** 固定时间戳和持久事件 ID 可确保重新加载/重连时的重放结果确定。 */
 export function buildSchedule(run, result) {
   const schedule = [];
   const add = (offset, type, payload = {}) =>
@@ -123,14 +123,14 @@ export const mockService = {
     const db = load();
     return clone(need(documents(db), "document_id", document_id));
   },
-  async uploadDocument(project_id, file, fail = false) {
+  async uploadDocument(project_id, file, fail = false, localDemo = false) {
     const type = file.name.split(".").pop().toLowerCase();
     if (!FILE_TYPES.includes(type))
       throw new Error("仅支持 PDF、Markdown、TXT、CSV、JSON 文件。");
     if (file.size > 20 * 1024 * 1024)
       throw new Error("原型单文件大小上限为 20 MB。");
     const db = load();
-    need(db.projects, "project_id", project_id);
+    if (!localDemo) need(db.projects, "project_id", project_id);
     const doc = {
       document_id: id("doc"),
       project_id,

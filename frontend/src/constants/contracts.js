@@ -13,6 +13,9 @@ export const EVENTS = [
   "skill_loaded",
   "retrieval_started",
   "retrieval_finished",
+  "model_started",
+  "model_finished",
+  "tool_failed",
   "tool_started",
   "tool_finished",
   "answer_delta",
@@ -39,6 +42,9 @@ export const LABELS = {
   skill_loaded: "技能加载",
   retrieval_started: "开始检索",
   retrieval_finished: "检索完成",
+  model_started: "模型开始",
+  model_finished: "模型完成",
+  tool_failed: "工具失败",
   tool_started: "工具调用",
   tool_finished: "工具完成",
   validation_failed: "校验未通过",
@@ -48,4 +54,4 @@ export const FILE_TYPES = ["pdf", "md", "txt", "csv", "json"];
 /** @typedef {{status: 'complete'|'partial'|'insufficient_evidence', summary: string, claims: {statement:string,evidence_ids:string[]}[], hypotheses: {hypothesis:string,confidence:number,validation_method:string}[], experiments: {objective:string,change:string,metrics:string[],success_criteria:string}[], missing_information:string[]}} Answer */
 /** @typedef {{evidence_id:string,document_id:string,document_name:string,page_number:number|null,snippet:string,project_id:string,run_id:string}} Evidence */
 /** @typedef {{event_id:string,run_id:string,sequence:number,timestamp:string,type:string,payload:object}} RunEvent */
-/** @typedef {{run_id:string,thread_id:string,project_id:string,status:string,answer:Answer|null,evidence:Evidence[],events:RunEvent[]}} Run */
+/** @typedef {{run_id:string,thread_id:string,project_id:string,status:string,answer:Answer|string|null,evidence:Evidence[],events:RunEvent[]}} Run */

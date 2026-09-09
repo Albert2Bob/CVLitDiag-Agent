@@ -9,6 +9,8 @@ export default [
     files: ["**/*.{js,vue}"],
     languageOptions: { globals: { ...globals.browser, ...globals.node } },
     rules: {
+      // 模板缩进（包括多行表达式）由 Prettier 负责。
+      "vue/html-indent": "off",
       "vue/multi-word-component-names": "off",
       "vue/max-attributes-per-line": "off",
       "vue/html-self-closing": "off",

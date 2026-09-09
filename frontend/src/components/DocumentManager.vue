@@ -86,7 +86,7 @@ async function view(id) {
     >
       <header>
         <div>
-          <h2 id="documents-title">项目资料库</h2>
+          <h2 id="documents-title">项目资料库 · 本地演示</h2>
           <p class="muted">{{ store.project?.name }}</p>
         </div>
         <button aria-label="关闭资料库" autofocus @click="$emit('close')">
@@ -97,7 +97,7 @@ async function view(id) {
         {{
           isMock
             ? "仅模拟上传与解析，不读取或分析文件内容。上传资料不会生成真实引用。"
-            : "文件由后端接收与解析，当前为接口联调入口。"
+            : "资料功能为本地演示，仅保存元数据，不上传后端或参与真实回答。"
         }}
       </p>
       <label class="upload-zone">
@@ -155,7 +155,7 @@ async function view(id) {
           }}
         </p>
       </div>
-      <p class="caption">删除后不再参与新任务。历史任务保留当时的证据快照。</p>
+      <p class="caption">此处操作仅影响本地演示资料。</p>
     </section>
   </div>
 </template>
