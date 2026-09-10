@@ -18,7 +18,7 @@ async function poll() {
   } catch (error) {
     store.error = error.message;
   }
-  if (!disposed) timer = setTimeout(poll, 650);
+  if (!disposed) timer = setTimeout(poll, 1200);
 }
 onMounted(() => {
   previousFocus = document.activeElement;
@@ -86,7 +86,7 @@ async function view(id) {
     >
       <header>
         <div>
-          <h2 id="documents-title">项目资料库 · 本地演示</h2>
+          <h2 id="documents-title">项目资料库</h2>
           <p class="muted">{{ store.project?.name }}</p>
         </div>
         <button aria-label="关闭资料库" autofocus @click="$emit('close')">
@@ -97,7 +97,7 @@ async function view(id) {
         {{
           isMock
             ? "仅模拟上传与解析，不读取或分析文件内容。上传资料不会生成真实引用。"
-            : "资料功能为本地演示，仅保存元数据，不上传后端或参与真实回答。"
+            : "文件将安全上传到当前项目，后台完成解析、分块和索引；ready 后才参与检索。"
         }}
       </p>
       <label class="upload-zone">
@@ -119,7 +119,7 @@ async function view(id) {
       <p v-if="store.error" class="error" role="alert">{{ store.error }}</p>
       <div class="document-list">
         <p v-if="!store.documents.length" class="muted">
-          暂无资料，选择文件开始模拟上传。
+          暂无资料，选择文件开始上传。
         </p>
         <div
           v-for="doc in store.documents"
@@ -149,13 +149,16 @@ async function view(id) {
         </p>
         <p class="muted">
           {{
-            detail.seeded
-              ? "预置演示资料，引用片段为人工编写。"
-              : "只保存文件元数据，内容未在本原型中被真实解析。"
+            isMock
+              ? "这是模拟资料，不会参与真实检索。"
+              : detail.error_message ||
+                `版本 ${detail.document_version} · ${detail.file_size} 字节${detail.page_count ? ` · ${detail.page_count} 页` : ""}`
           }}
         </p>
       </div>
-      <p class="caption">此处操作仅影响本地演示资料。</p>
+      <p class="caption">
+        {{ isMock ? "此处操作仅影响本地演示资料。" : "状态来自后端，刷新页面后仍会恢复。" }}
+      </p>
     </section>
   </div>
 </template>

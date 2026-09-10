@@ -1,10 +1,14 @@
 import asyncio
+import hashlib
 import json
 import logging
+import re
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import Annotated
+from uuid import uuid4
 
-from fastapi import FastAPI, Header, HTTPException, Request
+from fastapi import FastAPI, File, Header, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
@@ -13,7 +17,7 @@ from .config import Settings
 from .output_validation import OutputValidationFailed, validate_answer
 from .schemas import ErrorCode, FinalAnswer
 from .security import PermissionDenied
-from .storage import TERMINAL, Conflict, Store
+from .storage import TERMINAL, Conflict, DuplicateDocument, Store
 from .tool_executor import RunContext
 
 
@@ -53,9 +57,10 @@ def safe_failure(exc):
 
 
 class Runner:
-    def __init__(self, store, settings, executor=None):
+    def __init__(self, store, settings, executor=None, retrieval_service=None):
         self.store, self.settings = store, settings
         self.executor = executor
+        self.retrieval_service = retrieval_service
         self.tasks = {}
 
     def start(self, run_id):
@@ -99,16 +104,33 @@ class Runner:
                         run_id,
                         self.store,
                         (self.settings.deepseek_api_key.get_secret_value(),),
+                        run["question"],
+                        self.retrieval_service,
                     )
                     answer = await executor(self.settings, self.store.history(run_id), emit, context=context)
                 if isinstance(answer, FinalAnswer):
                     answer = answer.model_dump(mode="json")
                 try:
                     # 完成事件前再次校验，防止自定义执行器绕过运行时的输出契约。
-                    answer = validate_answer(answer, set()).model_dump(mode="json")
+                    allowed = {item["evidence_id"] for item in self.store.run_evidence(run_id)}
+                    answer = validate_answer(answer, allowed)
+                    if (
+                        not allowed
+                        and self.store.retrieval_attempted(run_id)
+                        and answer.status != "insufficient_evidence"
+                    ):
+                        raise ValueError("检索为空时必须返回 insufficient_evidence")
+                    answer = answer.model_dump(mode="json")
                 except (ValueError, TypeError) as exc:
                     raise OutputValidationFailed from exc
-                await emit("completed", {"status": "completed", "answer": answer, "evidence": []})
+                await emit(
+                    "completed",
+                    {
+                        "status": "completed",
+                        "answer": answer,
+                        "evidence": self.store.run_evidence(run_id),
+                    },
+                )
         except asyncio.CancelledError:
             # 取消端点或关停流程已经负责持久化终止事件。
             pass
@@ -144,7 +166,7 @@ class Runner:
             await asyncio.gather(*(task for _, task in tasks), return_exceptions=True)
 
 
-def create_app(settings=None, executor=None):
+def create_app(settings=None, executor=None, *, embedding=None, reranker=None):
     config = settings or Settings()
 
     @asynccontextmanager
@@ -154,20 +176,45 @@ def create_app(settings=None, executor=None):
             logging.getLogger(name).setLevel(logging.WARNING)
         store = Store(config.database_path, config.development_user_id)
         store.recover_interrupted()
+        from .rag.embeddings import create_embedding
+        from .rag.ingestion import DocumentProcessor
+        from .rag.keyword_index import BM25Index
+        from .rag.reranker import create_reranker
+        from .rag.retrieval import RetrievalService
+        from .rag.summary_index import SummaryIndex
+        from .rag.vector_index import SQLiteVectorIndex
+
+        embedding_provider = embedding or create_embedding(config)
+        reranker_provider = reranker or create_reranker(config)
+        keyword = BM25Index(store)
+        vector = SQLiteVectorIndex(store, embedding_provider)
+        retrieval = RetrievalService(
+            store,
+            keyword,
+            vector,
+            SummaryIndex(store, keyword),
+            reranker_provider,
+            config,
+        )
+        storage_root = Path(config.document_storage_path).resolve()
+        storage_root.mkdir(parents=True, exist_ok=True)
         app.state.store = store
-        app.state.runner = Runner(store, config, executor)
+        app.state.processor = DocumentProcessor(store, storage_root, config, embedding_provider, vector)
+        app.state.storage_root = storage_root
+        app.state.runner = Runner(store, config, executor, retrieval)
         try:
             yield
         finally:
+            await app.state.processor.stop()
             await app.state.runner.stop()
             store.db.close()
 
-    app = FastAPI(title="科研 Agent · 阶段 3", lifespan=lifespan)
+    app = FastAPI(title="科研 Agent · 阶段 4", lifespan=lifespan)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=[s.strip() for s in config.cors_origins.split(",") if s.strip()],
         allow_credentials=True,
-        allow_methods=["GET", "POST"],
+        allow_methods=["GET", "POST", "DELETE"],
         allow_headers=["Content-Type", "Last-Event-ID"],
     )
 
@@ -193,6 +240,13 @@ def create_app(settings=None, executor=None):
     @app.exception_handler(Conflict)
     async def conflict(request, exc):
         return JSONResponse(status_code=409, content={"code": "THREAD_BUSY", "message": str(exc)})
+
+    @app.exception_handler(DuplicateDocument)
+    async def duplicate(request, exc):
+        return JSONResponse(
+            status_code=409,
+            content={"code": "DUPLICATE_DOCUMENT", "message": str(exc), "document_id": exc.document_id},
+        )
 
     @app.exception_handler(Exception)
     async def internal(request, exc):
@@ -228,6 +282,78 @@ def create_app(settings=None, executor=None):
     @app.post("/api/projects", status_code=201)
     async def project(body: ProjectInput):
         return app.state.store.create_project(body.name, body.description)
+
+    @app.get("/api/projects/{project_id}/documents")
+    async def project_documents(project_id: str):
+        return app.state.store.documents(project_id)
+
+    @app.post("/api/projects/{project_id}/documents", status_code=202)
+    async def upload_document(project_id: str, file: Annotated[UploadFile, File()]):
+        store = app.state.store
+        store.check_project(project_id)
+        original = (file.filename or "").replace("\\", "/").split("/")[-1]
+        filename = re.sub(r"[\x00-\x1f<>:\"/\\|?*]", "_", original).strip(" .")[:240]
+        extension = Path(filename).suffix.lower()
+        file_types = {".pdf": "pdf", ".md": "md", ".markdown": "md", ".txt": "txt", ".csv": "csv", ".json": "json"}
+        if not filename or extension not in file_types:
+            raise HTTPException(415, detail="仅支持 PDF、Markdown、TXT、CSV 和 JSON 文件。")
+        allowed_mime = {
+            "pdf": {"application/pdf", "application/octet-stream"},
+            "md": {"text/markdown", "text/plain", "application/octet-stream"},
+            "txt": {"text/plain", "application/octet-stream"},
+            "csv": {"text/csv", "application/csv", "text/plain", "application/octet-stream", "application/vnd.ms-excel"},
+            "json": {"application/json", "text/json", "text/plain", "application/octet-stream"},
+        }
+        file_type = file_types[extension]
+        if (file.content_type or "application/octet-stream").lower() not in allowed_mime[file_type]:
+            raise HTTPException(415, detail="文件 MIME 类型与扩展名不匹配。")
+        key = f"{project_id}/{uuid4().hex}{extension}"
+        target = (app.state.storage_root / key).resolve()
+        if app.state.storage_root not in target.parents:
+            raise HTTPException(400, detail="文件名不合法。")
+        target.parent.mkdir(parents=True, exist_ok=True)
+        digest, size, head = hashlib.sha256(), 0, b""
+        try:
+            with target.open("xb") as output:
+                while chunk := await file.read(64 * 1024):
+                    size += len(chunk)
+                    if size > config.max_upload_bytes:
+                        raise HTTPException(413, detail="文件大小超过系统限制。")
+                    if len(head) < 16:
+                        head += chunk[: 16 - len(head)]
+                    digest.update(chunk)
+                    output.write(chunk)
+            if not size:
+                raise HTTPException(422, detail="不能上传空文件。")
+            if file_type == "pdf" and not head.startswith(b"%PDF-"):
+                raise HTTPException(415, detail="文件内容不是有效 PDF。")
+            if file_type != "pdf" and head.startswith(b"%PDF-"):
+                raise HTTPException(415, detail="文件内容与扩展名不匹配。")
+            document = store.create_document(project_id, filename, file_type, key, digest.hexdigest(), size)
+            store.append_document_event(document["document_id"], "document_uploaded", {"file_size": size})
+            app.state.processor.start(document["document_id"])
+            return document
+        except Exception:
+            target.unlink(missing_ok=True)
+            raise
+        finally:
+            await file.close()
+
+    @app.get("/api/documents/{document_id}")
+    async def get_document(document_id: str):
+        document = app.state.store.document(document_id)
+        return {**document, "events": app.state.store.document_events(document_id)}
+
+    @app.delete("/api/documents/{document_id}", status_code=204)
+    async def delete_document(document_id: str):
+        await app.state.processor.cancel(document_id)
+        row = app.state.store.delete_document(document_id)
+        if row.get("storage_key"):
+            target = (app.state.storage_root / row["storage_key"]).resolve()
+            if app.state.storage_root not in target.parents or target.is_symlink():
+                raise HTTPException(400, detail="文档存储位置不合法。")
+            target.unlink(missing_ok=True)
+        return None
 
     @app.get("/api/projects/{project_id}/threads")
     async def threads(project_id: str):

@@ -6,7 +6,7 @@ import { briefSummary, formatDuration } from "../utils/executionDisplay";
 import { eventStatus } from "../utils/eventStatus";
 import { isMock } from "../services";
 const store = useWorkspace(),
-  tab = ref(isMock ? "evidence" : "timeline");
+  tab = ref(isMock || store.evidenceId ? "evidence" : "timeline");
 watch(
   () => [store.evidenceId, store.selectedRunId],
   () => {
@@ -65,7 +65,7 @@ const timeline = computed(
           <span class="file-icon">{{ e.page_number ? "PDF" : "TXT" }}</span>
           <span>
             {{ e.document_name }}
-            <small>演示资料 · 引用 {{ i + 1 }}</small>
+            <small>{{ isMock ? "演示资料" : e.section || "未标注章节" }} · 引用 {{ i + 1 }}</small>
           </span>
         </button>
         <template v-if="selected">
@@ -74,15 +74,16 @@ const timeline = computed(
             <strong>
               {{
                 selected.page_number
-                  ? `第 ${selected.page_number} 页`
+                  ? `第 ${selected.page_number}${selected.page_end && selected.page_end !== selected.page_number ? `–${selected.page_end}` : ""} 页`
+                  : selected.locator
+                    ? selected.locator
                   : "文本记录 · 无 PDF 页码"
               }}
             </strong>
             <p>{{ selected.snippet }}</p>
           </div>
           <p class="caption">
-            引用已定位至本任务的证据详情。原型不提供 PDF
-            预览；片段为人工编写的演示数据。
+            {{ isMock ? "片段为人工编写的演示数据。" : "片段来自入库时保存的原文块；历史引用为快照，原文档可能已删除。本阶段不提供 PDF 在线预览。" }}
           </p>
         </template>
       </template>

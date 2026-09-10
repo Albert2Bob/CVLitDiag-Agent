@@ -345,5 +345,5 @@ def test_upgrade_is_repeatable_and_preserves_text_history(tmp_path):
         assert store.run(rid)["answer"] == "阶段 2 历史文本"
         assert store.messages(tid)[-1]["content"] == "阶段 2 历史文本"
         assert len(store.documents(pid)) == 1
-        assert store.db.execute("PRAGMA user_version").fetchone()[0] == 3
+        assert store.db.execute("PRAGMA user_version").fetchone()[0] == 4
         store.db.close()

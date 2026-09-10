@@ -1,0 +1,12 @@
+[
+  {"case_id":"q01","question":"残差块如何连接输入？","project_id":"phase4_fixture","allowed_document_ids":["resnet"],"relevant_chunk_ids":["resnet_residual"],"required_evidence":["ev_resnet_residual"],"expected_status":"complete"},
+  {"case_id":"q02","question":"残差网络 ResNet 的核心是什么？","project_id":"phase4_fixture","allowed_document_ids":["resnet"],"relevant_chunk_ids":["resnet_residual"],"required_evidence":["ev_resnet_residual"],"expected_status":"complete"},
+  {"case_id":"q03","question":"ViT 代表什么结构？","project_id":"phase4_fixture","allowed_document_ids":["vit"],"relevant_chunk_ids":["vit_method"],"required_evidence":["ev_vit_method"],"expected_status":"complete"},
+  {"case_id":"q04","question":"ResNet-152 的 top-5 error 是多少？","project_id":"phase4_fixture","allowed_document_ids":["resnet"],"relevant_chunk_ids":["resnet_metric"],"required_evidence":["ev_resnet_metric"],"expected_status":"complete"},
+  {"case_id":"q05","question":"比较 ResNet 与 ViT 的结构和实验条件。","project_id":"phase4_fixture","allowed_document_ids":["resnet","vit"],"relevant_chunk_ids":["resnet_residual","vit_method","vit_condition"],"required_evidence":["ev_resnet_residual","ev_vit_method"],"expected_status":"partial"},
+  {"case_id":"q06","question":"论文报告的 3.57% 指标是什么？","project_id":"phase4_fixture","allowed_document_ids":["resnet"],"relevant_chunk_ids":["resnet_metric"],"required_evidence":["ev_resnet_metric"],"expected_status":"complete"},
+  {"case_id":"q07","question":"AP50 与 AP 是同一个指标吗？","project_id":"phase4_fixture","allowed_document_ids":["detection"],"relevant_chunk_ids":["detection_metric"],"required_evidence":["ev_detection_metric"],"expected_status":"complete"},
+  {"case_id":"q08","question":"哪份资料讨论图像特定归纳偏置？","project_id":"phase4_fixture","allowed_document_ids":["vit"],"relevant_chunk_ids":["vit_method"],"required_evidence":["ev_vit_method"],"expected_status":"complete"},
+  {"case_id":"q09","question":"哪篇资料适合回答大规模预训练的重要性？","project_id":"phase4_fixture","allowed_document_ids":["vit"],"relevant_chunk_ids":["vit_condition"],"required_evidence":["ev_vit_condition"],"expected_status":"complete"},
+  {"case_id":"q10","question":"这些模型在私有数据集上准确率多少？","project_id":"phase4_fixture","allowed_document_ids":["resnet","vit","detection"],"relevant_chunk_ids":[],"required_evidence":[],"expected_status":"insufficient_evidence"}
+]

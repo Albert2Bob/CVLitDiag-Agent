@@ -59,3 +59,27 @@ it("keeps brief summaries bounded and small durations readable", () => {
     "1.25 秒",
   ]);
 });
+
+
+it("renders real evidence sections and page ranges without demo wording", async () => {
+  store.evidenceId = "e1";
+  store.currentRun = {
+    ...store.currentRun,
+    status: "completed",
+    evidence: [
+      {
+        evidence_id: "e1",
+        document_name: "paper.pdf",
+        section: "Experiments",
+        page_number: 3,
+        page_end: 4,
+        snippet: "真实保存的证据片段",
+      },
+    ],
+  };
+  const html = await renderToString(createSSRApp(RunInspector));
+  expect(html).toContain("Experiments");
+  expect(html).toContain("第 3–4 页");
+  expect(html).toContain("真实保存的证据片段");
+  expect(html).not.toContain("人工编写的演示数据");
+});

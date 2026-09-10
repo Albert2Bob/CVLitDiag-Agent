@@ -81,7 +81,9 @@ export function validEvidence(items, run) {
           (e.page_number === null ||
             (Number.isInteger(e.page_number) && e.page_number > 0)) &&
           e.run_id === run.run_id &&
-          e.project_id === run.project_id,
+          e.project_id === run.project_id &&
+          (e.page_end == null ||
+            (Number.isInteger(e.page_end) && e.page_end > 0)),
       )
     : [];
 }

@@ -41,7 +41,7 @@ async function enter() {
           {{
             isMock
               ? "所有回答、资料解析与引用均为演示。"
-              : "真实模型问答；资料解析与引用为演示。"
+              : "真实模型问答、资料解析与引用。"
           }}
         </p>
         <button class="primary" @click="enter">
@@ -51,7 +51,7 @@ async function enter() {
         <p v-if="store.error" role="alert" class="error">{{ store.error }}</p>
       </div>
       <small>
-        {{ isMock ? "阶段 1 · 前端交互原型" : "阶段 3 · 开发模式" }}
+        {{ isMock ? "阶段 1 · 前端交互原型" : "阶段 4 · 开发模式" }}
       </small>
     </div>
     <div class="entry-art" aria-hidden="true">

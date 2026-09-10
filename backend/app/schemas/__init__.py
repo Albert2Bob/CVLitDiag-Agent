@@ -109,12 +109,19 @@ class FinalAnswer(Contract):
 
 
 class DocumentMetadata(Contract):
-    # 这是解析流程使用的最小文档元数据契约，当前来源限定为开发阶段夹具。
     document_id: ResourceId
     project_id: ResourceId
     filename: Text
     file_type: Literal["pdf", "md", "txt", "csv", "json"]
-    parse_status: Literal["mock_metadata"] = "mock_metadata"
+    parse_status: Literal["uploaded", "parsing", "indexing", "ready", "failed", "unsupported", "mock_metadata"]
     created_at: str
+    updated_at: str | None = None
     page_count: int | None = Field(default=None, ge=1)
-    source: Literal["development_fixture"] = "development_fixture"
+    document_version: int = Field(default=1, ge=1)
+    content_hash: str = ""
+    file_size: int = Field(default=0, ge=0)
+    parse_quality: str | None = None
+    access_scope: str = "project"
+    error_code: str | None = None
+    error_message: str | None = None
+    source: Literal["upload", "development_fixture"] = "upload"

@@ -159,7 +159,7 @@ async function switchProject(event) {
       </nav>
       <div class="sidebar-documents">
         <div class="nav-label">
-          资料库 · 本地演示
+          资料库{{ isMock ? " · 演示" : "" }}
           <span>{{ store.documents.length }}</span>
         </div>
         <button
@@ -327,7 +327,7 @@ async function switchProject(event) {
             {{
               isMock
                 ? "演示回答与引用仅用于交互验证"
-                : "回答由后端生成 · 资料库为本地演示"
+                : "回答由后端生成 · 引用来自当前项目真实资料"
             }}
           </span>
           <span>Enter 发送 · Shift + Enter 换行</span>

@@ -74,23 +74,34 @@ it("uses the project, thread and message routes and validates message content", 
   });
   await expect(service.getMessages("t")).rejects.toThrow();
 });
-it("keeps document uploads local even for real backend project IDs", async () => {
-  const data = new Map();
-  vi.stubGlobal("localStorage", {
-    getItem: (k) => data.get(k),
-    setItem: (k, v) => data.set(k, v),
-  });
-  const fetch = vi.fn();
+it("uses multipart backend document routes and maps persisted fields", async () => {
+  const backend = {
+    document_id: "document-1",
+    project_id: "backend-project",
+    filename: "notes.txt",
+    file_type: "txt",
+    parse_status: "uploaded",
+  };
+  const fetch = vi
+    .fn()
+    .mockResolvedValueOnce({ ok: true, status: 202, json: async () => backend })
+    .mockResolvedValueOnce({ ok: true, status: 200, json: async () => [backend] })
+    .mockResolvedValueOnce({ ok: true, status: 204 });
   vi.stubGlobal("fetch", fetch);
-  const doc = await httpService.uploadDocument("backend-project", {
-    name: "notes.txt",
-    size: 10,
-  });
+  const doc = await httpService.uploadDocument(
+    "backend-project",
+    new File(["content"], "notes.txt", { type: "text/plain" }),
+  );
   expect(doc.project_id).toBe("backend-project");
+  expect(doc.status).toBe("uploaded");
   expect(await httpService.listDocuments("backend-project")).toHaveLength(1);
   await httpService.deleteDocument(doc.document_id);
-  expect(await httpService.listDocuments("backend-project")).toEqual([]);
-  expect(fetch).not.toHaveBeenCalled();
+  expect(fetch.mock.calls[0][1].body).toBeInstanceOf(FormData);
+  expect(fetch.mock.calls.map(([url]) => new URL(url).pathname)).toEqual([
+    "/api/projects/backend-project/documents",
+    "/api/projects/backend-project/documents",
+    "/api/documents/document-1",
+  ]);
 });
 
 it("selectProject loads backend threads when the project is absent from local demo data", async () => {
@@ -117,6 +128,7 @@ it("selectProject loads backend threads when the project is absent from local de
   expect(store.loading).toBe(false);
   expect(fetch.mock.calls.map(([url]) => new URL(url).pathname)).toEqual([
     `/api/projects/${pid}/threads`,
+    `/api/projects/${pid}/documents`,
     "/api/threads/backend-thread/messages",
   ]);
 });

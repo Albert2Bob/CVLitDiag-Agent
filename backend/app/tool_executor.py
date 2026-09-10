@@ -2,7 +2,7 @@
 
 import asyncio
 import json
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime
 from time import perf_counter
 from typing import Callable, Literal
@@ -12,6 +12,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from langchain_core.tools import StructuredTool
 from pydantic import BaseModel, field_validator
 
+from .rag.schemas import SearchArguments, SearchResult
 from .schemas import (
     Contract,
     DocumentMetadata,
@@ -34,6 +35,9 @@ class RunContext:
     run_id: str
     store: object = None
     secrets: tuple = ()
+    question: str = ""
+    retrieval_service: object = None
+    emit: Callable | None = None
 
 
 class TimeArguments(Contract):
@@ -54,7 +58,7 @@ class TimeArguments(Contract):
 class ListArguments(Contract):
     project_id: ResourceId
     file_type: Literal["pdf", "md", "txt", "csv", "json"] | None = None
-    parse_status: Literal["mock_metadata"] | None = None
+    parse_status: Literal["uploaded", "parsing", "indexing", "ready", "failed", "unsupported"] | None = None
 
 
 class MetadataArguments(Contract):
@@ -68,7 +72,7 @@ class TimeData(Contract):
 
 class DocumentList(Contract):
     documents: list[DocumentMetadata]
-    source: Literal["development_fixture"] = "development_fixture"
+    source: str = "indexed_repository"
 
 
 async def clock(args, context):
@@ -88,6 +92,12 @@ async def metadata(args, context):
     return DocumentMetadata.model_validate(context.store.document(args.document_id))
 
 
+async def search_documents(args, context):
+    if not context.retrieval_service or not context.emit:
+        raise RuntimeError("检索服务不可用")
+    return await context.retrieval_service.search(args, context, context.emit)
+
+
 @dataclass(frozen=True)
 class ToolDefinition:
     # 工具的输入、输出和读写属性集中声明，执行器据此统一校验与审计。
@@ -101,9 +111,8 @@ class ToolDefinition:
     timeout_seconds: float = 5
 
 
-def default_tools():
-    # 文档工具只读取阶段 3 的开发夹具；真正的解析与检索留到后续阶段接入。
-    return [
+def default_tools(include_retrieval=False):
+    tools = [
         ToolDefinition(
             "get_current_time",
             "读取指定 IANA 时区的当前时间，默认 Asia/Shanghai。",
@@ -114,7 +123,7 @@ def default_tools():
         ),
         ToolDefinition(
             "list_project_documents",
-            "列出当前项目的开发模拟文档元数据，不读取正文。",
+            "列出当前项目的真实文档元数据和处理状态，不读取正文。",
             ListArguments,
             DocumentList,
             list_documents,
@@ -122,13 +131,26 @@ def default_tools():
         ),
         ToolDefinition(
             "get_document_metadata",
-            "读取当前项目内文档元数据，仅开发模拟资料，不是 RAG 证据。",
+            "读取当前项目内文档元数据，不返回正文。",
             MetadataArguments,
             DocumentMetadata,
             metadata,
             "document",
         ),
     ]
+    if include_retrieval:
+        tools.append(
+            ToolDefinition(
+                "search_project_documents",
+                "在当前项目的 ready 文档中执行 BM25、向量和摘要三路召回，返回可引用证据。最多调用两轮。",
+                SearchArguments,
+                SearchResult,
+                search_documents,
+                "project",
+                timeout_seconds=30,
+            )
+        )
+    return tools
 
 
 ERROR_MESSAGES = {
@@ -156,12 +178,18 @@ class ToolExecutor:
     definitions: list = field(default_factory=default_tools)
 
     def __post_init__(self):
+        self.context = replace(self.context, emit=self.emit)
+        if self.context.retrieval_service and not any(
+            definition.name == "search_project_documents" for definition in self.definitions
+        ):
+            self.definitions = [*self.definitions, *default_tools(include_retrieval=True)[-1:]]
         self.registry = {d.name: d for d in self.definitions}
         if len(self.registry) != len(self.definitions):
             raise ValueError("工具名称必须唯一")
         self.cache = {}
         self.lock = asyncio.Lock()
         self.records = []
+        self.retrieval_rounds = 0
 
     def langchain_tools(self):
         # LangChain 只获得工具描述和参数模式，实际调用仍回到 execute()。
@@ -183,6 +211,10 @@ class ToolExecutor:
         if definition.permission == "project":
             if not ctx.store or args.project_id != ctx.project_id:
                 raise PermissionDenied
+            for document_id in getattr(args, "document_ids", None) or []:
+                document = ctx.store.document(document_id)
+                if document["project_id"] != ctx.project_id:
+                    raise PermissionDenied
         if definition.permission == "document":
             if not ctx.store:
                 raise PermissionDenied
@@ -226,6 +258,14 @@ class ToolExecutor:
                 record.argument_validation = "failed"
                 raise ToolFailure(ErrorCode.INVALID_ARGUMENT) from None
             record.argument_validation = "passed"
+            if definition.name == "search_project_documents":
+                if self.retrieval_rounds >= 2:
+                    raise ToolFailure(ErrorCode.INVALID_ARGUMENT)
+                if self.retrieval_rounds == 0 and args.query.strip() != ctx.question.strip():
+                    raise ToolFailure(ErrorCode.INVALID_ARGUMENT)
+                if self.retrieval_rounds == 1 and not args.missing_information:
+                    raise ToolFailure(ErrorCode.INVALID_ARGUMENT)
+                self.retrieval_rounds += 1
             self.authorize(definition, args)
             record.permission_validation = "passed"
             # 缓存键包含运行、用户和项目边界，避免相同参数在不同权限域之间复用。

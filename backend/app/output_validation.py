@@ -30,13 +30,17 @@ def validate_answer(candidate, evidence_ids):
     return answer
 
 
-async def finalize(candidate, evidence_ids, emit, repair, context=None):
+async def finalize(
+    candidate, evidence_ids, emit, repair, context=None, *, require_insufficient=False
+):
     # 两轮分别对应原始输出和唯一一次修复，防止模型进入无限修复循环。
     for attempt in range(2):
         await emit("output_validation_started", {"attempt": attempt, "summary": "正在校验回答结构和引用。"})
         error = None
         try:
             answer = validate_answer(candidate, evidence_ids)
+            if require_insufficient and answer.status != "insufficient_evidence":
+                raise ValueError("检索为空时必须返回 insufficient_evidence")
         except ValidationError as exc:
             # 不包含输入值、异常上下文和未知字段名称，避免回显秘密。
             error = [
@@ -99,6 +103,17 @@ async def finalize(candidate, evidence_ids, emit, repair, context=None):
                     "errors": error,
                     "schema": FinalAnswer.model_json_schema(),
                     "allowed_evidence_ids": sorted(evidence_ids),
+                    "allowed_evidence": [
+                        {
+                            "evidence_id": item["evidence_id"],
+                            "document_name": item["document_name"],
+                            "page_number": item.get("page_number"),
+                            "section": item.get("section", ""),
+                            "snippet": item["snippet"][:500],
+                        }
+                        for item in (context.store.run_evidence(context.run_id) if context and context.store else [])
+                        if item["evidence_id"] in evidence_ids
+                    ],
                 },
                 ensure_ascii=False,
             )

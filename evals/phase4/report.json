@@ -1,0 +1,98 @@
+{
+  "config": {
+    "embedding": "deterministic-hash-v1",
+    "bm25": "unicode-token-v1",
+    "rrf_k": 60,
+    "reranker": "deterministic-overlap-v1",
+    "chunking": "paragraph-char-v1"
+  },
+  "results": [
+    {
+      "case_id": "q01",
+      "recall_at_5": 1.0,
+      "recall_at_10": 1.0,
+      "citation_validity": 1.0,
+      "citation_support": 1.0,
+      "status_match": true
+    },
+    {
+      "case_id": "q02",
+      "recall_at_5": 1.0,
+      "recall_at_10": 1.0,
+      "citation_validity": 1.0,
+      "citation_support": 1.0,
+      "status_match": true
+    },
+    {
+      "case_id": "q03",
+      "recall_at_5": 1.0,
+      "recall_at_10": 1.0,
+      "citation_validity": 1.0,
+      "citation_support": 1.0,
+      "status_match": true
+    },
+    {
+      "case_id": "q04",
+      "recall_at_5": 1.0,
+      "recall_at_10": 1.0,
+      "citation_validity": 1.0,
+      "citation_support": 1.0,
+      "status_match": true
+    },
+    {
+      "case_id": "q05",
+      "recall_at_5": 1.0,
+      "recall_at_10": 1.0,
+      "citation_validity": 1.0,
+      "citation_support": 1.0,
+      "status_match": true
+    },
+    {
+      "case_id": "q06",
+      "recall_at_5": 1.0,
+      "recall_at_10": 1.0,
+      "citation_validity": 1.0,
+      "citation_support": 1.0,
+      "status_match": true
+    },
+    {
+      "case_id": "q07",
+      "recall_at_5": 1.0,
+      "recall_at_10": 1.0,
+      "citation_validity": 1.0,
+      "citation_support": 1.0,
+      "status_match": true
+    },
+    {
+      "case_id": "q08",
+      "recall_at_5": 1.0,
+      "recall_at_10": 1.0,
+      "citation_validity": 1.0,
+      "citation_support": 1.0,
+      "status_match": true
+    },
+    {
+      "case_id": "q09",
+      "recall_at_5": 1.0,
+      "recall_at_10": 1.0,
+      "citation_validity": 1.0,
+      "citation_support": 1.0,
+      "status_match": true
+    },
+    {
+      "case_id": "q10",
+      "recall_at_5": 1.0,
+      "recall_at_10": 1.0,
+      "citation_validity": 1.0,
+      "citation_support": 1.0,
+      "status_match": true
+    }
+  ],
+  "summary": {
+    "recall_at_5": 1.0,
+    "recall_at_10": 1.0,
+    "citation_validity": 1.0,
+    "citation_support": 1.0,
+    "status_match": 1.0
+  }
+}

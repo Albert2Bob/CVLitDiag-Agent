@@ -1,0 +1,12 @@
+[
+  {"case_id":"q01","retrieved_chunk_ids":["resnet_residual"],"available_evidence":["ev_resnet_residual"],"cited_evidence":["ev_resnet_residual"],"status":"complete"},
+  {"case_id":"q02","retrieved_chunk_ids":["resnet_residual"],"available_evidence":["ev_resnet_residual"],"cited_evidence":["ev_resnet_residual"],"status":"complete"},
+  {"case_id":"q03","retrieved_chunk_ids":["vit_method"],"available_evidence":["ev_vit_method"],"cited_evidence":["ev_vit_method"],"status":"complete"},
+  {"case_id":"q04","retrieved_chunk_ids":["resnet_metric"],"available_evidence":["ev_resnet_metric"],"cited_evidence":["ev_resnet_metric"],"status":"complete"},
+  {"case_id":"q05","retrieved_chunk_ids":["resnet_residual","vit_method","vit_condition"],"available_evidence":["ev_resnet_residual","ev_vit_method","ev_vit_condition"],"cited_evidence":["ev_resnet_residual","ev_vit_method"],"status":"partial"},
+  {"case_id":"q06","retrieved_chunk_ids":["resnet_metric"],"available_evidence":["ev_resnet_metric"],"cited_evidence":["ev_resnet_metric"],"status":"complete"},
+  {"case_id":"q07","retrieved_chunk_ids":["detection_metric"],"available_evidence":["ev_detection_metric"],"cited_evidence":["ev_detection_metric"],"status":"complete"},
+  {"case_id":"q08","retrieved_chunk_ids":["vit_method"],"available_evidence":["ev_vit_method"],"cited_evidence":["ev_vit_method"],"status":"complete"},
+  {"case_id":"q09","retrieved_chunk_ids":["vit_condition"],"available_evidence":["ev_vit_condition"],"cited_evidence":["ev_vit_condition"],"status":"complete"},
+  {"case_id":"q10","retrieved_chunk_ids":[],"available_evidence":[],"cited_evidence":[],"status":"insufficient_evidence"}
+]

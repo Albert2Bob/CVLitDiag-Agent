@@ -1,8 +1,13 @@
-import { mockService } from "../mocks/service";
 import { request } from "./apiClient";
 import { subscribeSSE } from "./sseClient";
 const enc = encodeURIComponent;
-// 第三阶段后端路由；文档控制功能仍为本地演示。
+const documentView = (doc) => ({
+  ...doc,
+  name: doc.filename,
+  type: doc.file_type,
+  status: doc.parse_status,
+});
+// 文档字段在适配层映射，组件无需感知后端持久化命名。
 export const httpService = {
   scenarios: async () => [],
   listProjects: () => request("/api/projects"),
@@ -12,11 +17,22 @@ export const httpService = {
   createThread: (body) => request("/api/threads", { method: "POST", body }),
   getMessages: (thread_id) =>
     request(`/api/threads/${enc(thread_id)}/messages`),
-  listDocuments: mockService.listDocuments,
-  getDocument: mockService.getDocument,
-  deleteDocument: mockService.deleteDocument,
-  uploadDocument: (project_id, file, fail = false) =>
-    mockService.uploadDocument(project_id, file, fail, true),
+  listDocuments: async (project_id) =>
+    (await request(`/api/projects/${enc(project_id)}/documents`)).map(documentView),
+  getDocument: async (document_id) =>
+    documentView(await request(`/api/documents/${enc(document_id)}`)),
+  deleteDocument: (document_id) =>
+    request(`/api/documents/${enc(document_id)}`, { method: "DELETE" }),
+  uploadDocument: async (project_id, file) => {
+    const body = new FormData();
+    body.append("file", file);
+    return documentView(
+      await request(`/api/projects/${enc(project_id)}/documents`, {
+        method: "POST",
+        body,
+      }),
+    );
+  },
   createRun: ({ project_id, thread_id, user_id, question }) =>
     request("/api/runs", {
       method: "POST",

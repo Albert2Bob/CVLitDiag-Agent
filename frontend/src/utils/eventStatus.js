@@ -28,6 +28,7 @@ export function eventStatus(event, index, timeline, runStatus) {
     ],
     output_repair_started: ["output_repair_finished"],
     retrieval_started: ["retrieval_finished"],
+    rerank_started: ["rerank_finished"],
     skill_selected: ["skill_loaded"],
   }[event.type];
   if (endings) {
